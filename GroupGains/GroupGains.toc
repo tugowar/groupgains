@@ -1,14 +1,24 @@
 ## Interface: 16001
 ## Title: Group Gains - Find your leveling group on the fly
+## IconTexture: Interface\AddOns\GroupGains\Media\GroupGainsIcon
 ## Notes: Follow Cohort Gaming's authored chapters and find companions.
 ## Author: Cohort Gaming
-## Version: 0.2.0
+## Version: 0.9.0
+## X-Build: 20261029.4
 ## SavedVariables: GroupGainsDB, CutiesDB
-## OptionalDeps: TomTom
 GuideData.lua
+DungeonLinks.lua
 Util.lua
 State.lua
 API.lua
+Auto.lua
+QuestShare.lua
+AutoShare.lua
+Audio.lua
+Navigation.lua
 Social.lua
+PartyProgress.lua
+Companions.lua
 UI.lua
+Windows.lua
 Main.lua

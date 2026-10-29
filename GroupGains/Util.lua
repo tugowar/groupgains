@@ -1,5 +1,6 @@
 local _, C = ...
-C.version = "0.2.0"
+C.version = "0.9.0"
+C.build = "20261029.4"
 function C.Safe(value) return not (issecretvalue and issecretvalue(value)) end
 function C.Call(fn, ...)
     if type(fn) ~= "function" then return nil end

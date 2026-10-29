@@ -1,0 +1,43 @@
+GROUP GAINS 0.9.0 - BUILD 20261029.4
+
+Copy the GroupGains folder from dist for manual installation.
+The tracker and settings display v0.9.0, build 20261029.4.
+Saved progress stays in the separate GroupGainsDB SavedVariables.
+
+NEW IN THIS BUILD
+- Merge short and realm-qualified names for the same character in matching.
+  Finder rows, match totals, search replies and reply limits share one
+  identity. Same-named characters on different realms remain separate.
+- Replace the group invite silhouette with a simple + button.
+- Default objective-progress audio: Game objective complete.
+  Default objective-complete audio: Window close.
+  Quest complete remains Orc Male "Good job". Previous defaults update once;
+  other sound choices, mute settings and channel preferences remain.
+- Search immediately on initialization even if the tracker was already open.
+  Deferred during combat, instances and chat locks; matching opt-outs apply.
+- Part selector shows [1/7] completed tasks, or [Done] when finished.
+  Completed parts remain gray and can still be selected.
+
+RETAINED FEATURES
+- Share Quests announces in party chat, waits five seconds, then shares
+  quests five seconds apart. Stop Sharing cancels it. Dungeon entry offers
+  the same sequence after Yes. Verified shared acceptance respects Auto.
+- Automatic discovery about every 60 seconds, deferred during combat,
+  instances, chat locks or active searches. Everyone remains opt-in.
+- Current party and ignored players are excluded from recommendations.
+- Gray completed parts, completed-task hiding, Sync and auto-advance.
+- Automatic character-level checkpoints, live objective counts and party
+  progress tooltips. Manual overrides remain reversible.
+- Transparent task rows (40%) and default tracker background (50%).
+- 91 baseline chapters, 585 parts, 4,358 tasks and 45 Durotar race/class
+  variants. Guide revision fbb17ca10f974649 is retained.
+
+DATA AND LIMITS
+Outside Durotar, routes retain the exported Undead Warlock / party of three /
+no professions profile. Forever remains authoritative. Website sync is
+manual export; there are no HTTP calls or live Battle.net account links.
+Keys are never included in messages or progress exports.
+
+109 tests passed using simulated clients and export checks. Native audio,
+live visuals and server communication still need in-game verification.
+Prepared as dist only; no game installation or CurseForge upload changed.
