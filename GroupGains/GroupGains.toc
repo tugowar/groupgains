@@ -1,4 +1,4 @@
-## Interface: 11509
+## Interface: 16001
 ## Title: Group Gains - Find your leveling group on the fly
 ## IconTexture: Interface\AddOns\GroupGains\Media\GroupGainsIcon
 ## Notes: Follow Cohort Gaming's authored chapters and find companions.
@@ -27,5 +27,3 @@ UI.lua
 Windows.lua
 Diagnostics.lua
 Main.lua
-
-## X-Test-Target: Classic Era compatibility test; Forever guide data
