@@ -21,6 +21,8 @@ function A:Character()
     local name,realm=C.Call(UnitFullName,"player")
     local _,class=C.Call(UnitClass,"player")
     local _,race=C.Call(UnitRace,"player")
+    if not C.Safe(class) or type(class)~="string" then class="" end
+    if not C.Safe(race) or type(race)~="string" then race="" end
     race=race=="Scourge" and "undead" or string.lower(race or "")
     local professions={__array=true}
     if GetProfessions and GetProfessionInfo then
@@ -28,9 +30,26 @@ function A:Character()
         for _,index in pairs(indexes) do
             local profession,_,rank,_,_,_,skillLine=C.Call(GetProfessionInfo,index)
             if profession and C.Safe(rank) and C.Safe(skillLine) then
-                professions[#professions+1]={name=C.Text(profession),rank=rank,skillLine=skillLine}
+                professions[#professions+1]={name=C.Text(profession),rank=rank,skillLine=skillLine,key=C.Profile and C.Profile:ProfessionKey(profession,skillLine)}
             end
         end
+    end
+    if #professions==0 and C.Profile and GetNumSkillLines and GetSkillLineInfo then
+        local seen,collapsed={},{};local i=1
+        while i<=math.min(C.Call(GetNumSkillLines) or 0,1000) do
+            local name,header,expanded,rank=C.Call(GetSkillLineInfo,i)
+            if C.Safe(header) and header==true and C.Safe(expanded) and expanded~=true and ExpandSkillHeader and CollapseSkillHeader then
+                C.Call(ExpandSkillHeader,i);collapsed[#collapsed+1]=i
+            end
+            if C.Safe(header) and not header and C.Safe(rank) then
+                local profession=C.Profile:ProfessionKey(name)
+                if profession and not seen[profession] then
+                    seen[profession]=true;professions[#professions+1]={name=C.Text(name),rank=rank,key=profession}
+                end
+            end
+            i=i+1
+        end
+        for n=#collapsed,1,-1 do C.Call(CollapseSkillHeader,collapsed[n]) end
     end
     return {guid=C.Call(UnitGUID,"player") or "",name=C.Text(name),realm=C.Text(realm or C.Call(GetRealmName)),
         race=race,class=string.lower(class or ""),level=C.Call(UnitLevel,"player") or 1,
@@ -39,12 +58,25 @@ end
 function A:Capture(full)
     local facts={active={},completed={},objectives={},ready={},level=self:Level()}
     local api=C_QuestLog or {}
-    for _,id in ipairs(C.Call(api.GetAllCompletedQuestIDs) or {}) do
-        if C.Safe(id) and type(id)=="number" and C.State.questIds[id] then facts.completed[id]=true end
-    end
-    if not api.GetAllCompletedQuestIDs and GetQuestsCompleted then
-        local completed={};C.Call(GetQuestsCompleted,completed)
-        for id,done in pairs(completed) do if done and C.State.questIds[id] then facts.completed[id]=true end end
+    local completed=C.Call(api.GetAllCompletedQuestIDs)
+    if type(completed)=="table" then
+        facts.historyAvailable=true;facts.historySource="modern"
+        for _,id in pairs(completed) do
+            if C.Safe(id) and type(id)=="number" and C.State.questIds[id] then facts.completed[id]=true end
+        end
+    elseif type(GetQuestsCompleted)=="function" then
+        -- Older clients may fill the argument, return a table, or do both.
+        -- Try this fallback even when a modern wrapper exists but fails.
+        local filled={};local ok,returned=pcall(GetQuestsCompleted,filled)
+        if ok and C.Safe(returned) and returned~=false then
+            facts.historyAvailable=true;facts.historySource="legacy"
+            local function merge(history)
+                for id,done in pairs(history) do
+                    if C.Safe(id) and C.Safe(done) and (done==true or done==1) and C.State.questIds[id] then facts.completed[id]=true end
+                end
+            end
+            merge(filled);if type(returned)=="table" then merge(returned) end
+        end
     end
     local function captureQuest(id,index,complete)
         if C.Safe(id) and type(id)=="number" and id>0 then
@@ -94,7 +126,10 @@ function A:Capture(full)
         if not facts.active[id] and (C.Call(api.IsOnQuest,id)==true or type(index)=="number" and index>0) then
             captureQuest(id,index)
         end
-        if C.Call(api.IsQuestFlaggedCompleted or IsQuestFlaggedCompleted,id)==true then facts.completed[id]=true end
+        local done=C.Call(api.IsQuestFlaggedCompleted or IsQuestFlaggedCompleted,id)
+        if done~=true and done~=false and done~=1 and done~=0 then done=C.Call(IsQuestFlaggedCompleted,id) end
+        if done==true or done==1 then facts.completed[id]=true end
+        if done==true or done==false or done==1 or done==0 then facts.historyAvailable=true end
     end
     return facts
 end
@@ -115,16 +150,64 @@ function A:RestoreAutomatic(taskId)
     self:Refresh()
     C.State:Set(taskId,nil)
 end
-function A:Refresh(full) C.State:ApplyFacts(self:Capture(full)) end
-function A:Sync()
-    self:Refresh(true)
-    local active,overrides=0,0
+function A:Refresh(full) C.State:RefreshCharacterProfile();C.State:ApplyFacts(self:Capture(full)) end
+function A:SyncRefresh()
+    local previous=C.State.syncingHistory;C.State.syncingHistory=true
+    local ok=pcall(self.Refresh,self,true)
+    C.State.syncingHistory=previous
+    if not ok then C.Print("Could not finish reading quest history. Please try Sync again.") end
+    return ok
+end
+function A:SyncReport(before,note)
+    local active,overrides,completed,newTasks=0,0,0,0
     for _ in pairs(C.State.facts.active) do active=active+1 end
+    for id in pairs(C.State.data.completedQuests) do if C.State.questIds[id] then completed=completed+1 end end
+    for id,task in pairs(C.State.tasks) do if not before[id] and C.State:Done(task) then newTasks=newTasks+1 end end
     for id,value in pairs(C.State.data.overrides) do
         local task=C.State.tasks[id]
         if task and value==false and C.State:Automatic(task) then overrides=overrides+1 end
     end
-    C.Print("Quest log synced: "..active.." active quests."..(overrides>0 and " "..overrides.." manual unchecked tasks remain; use A to restore automatic tracking." or ""))
+    if not C.State.facts.historyAvailable then note="Completed-quest history is unavailable in this client; only available quest-log and level facts were used." end
+    C.Print("Synced: "..completed.." completed guide quests recorded; "..newTasks.." guide tasks newly checked off; "..active.." active quests."..
+        (overrides>0 and " "..overrides.." manual unchecked tasks remain; use A to restore automatic tracking." or "")..(note and " "..note or ""))
+end
+function A:UpdateSyncButton()
+    if C.UI and C.UI.sync then
+        C.UI.sync:SetText(self.historySync and "..." or "Sync")
+        C.UI.sync:SetEnabled(self.historySync==nil)
+    end
+end
+function A:HistoryReady()
+    local request=self.historySync;self.historySync=nil;self:UpdateSyncButton()
+    if request and request.character~=C.State.characterKey then return end
+    if self:SyncRefresh() and request then self:SyncReport(request.before) end
+end
+function A:Sync()
+    if self.historySync and self.historySync.expires>C.Now() then C.Print("Waiting for completed-quest history from the server.");return end
+    self.historySync=nil;self:UpdateSyncButton()
+    local before={};for id,task in pairs(C.State.tasks) do before[id]=C.State:Done(task)==true end
+    if not self:SyncRefresh() then return end
+    if C.State.facts.historySource~="modern" and type(GetQuestsCompleted)=="function" and type(QueryQuestsCompleted)=="function" then
+        local remaining=math.max(0,60-(C.Now()-(self.lastHistoryQuery or -1000)))
+        if remaining>0 then self:SyncReport(before,"A fresh server-history request is available in "..math.ceil(remaining).."s.");return end
+        local request={before=before,character=C.State.characterKey,expires=C.Now()+15}
+        self.historySync=request;self.lastHistoryQuery=C.Now();self:UpdateSyncButton()
+        local ok,result=pcall(QueryQuestsCompleted)
+        if not ok or result==false then
+            self.historySync=nil;self:UpdateSyncButton();self:SyncReport(before,"The server-history request was unavailable; available history was used.");return
+        end
+        if self.historySync~=request then return end -- a client may deliver the response immediately
+        C.Print("Refreshing completed-quest history from the server...")
+        if C_Timer and C_Timer.After then C_Timer.After(15,function()
+            if self.historySync~=request then return end
+            self.historySync=nil;self:UpdateSyncButton()
+            if request.character==C.State.characterKey and self:SyncRefresh() then
+                self:SyncReport(before,"The server has not returned fresh history yet; available history was used. Try Sync again shortly.")
+            end
+        end) end
+        return
+    end
+    self:SyncReport(before)
 end
 function A:QueueRefresh()
     if self.pending then return end
@@ -169,6 +252,48 @@ function A:GroupMembers()
         if key then names[key]=true end
     end
     return names
+end
+function A:GuildMembers()
+    local names={}
+    if C.Call(IsInGuild)~=true or type(GetGuildRosterInfo)~="function" then return names end
+    local count=C.Call(GetNumGuildMembers)
+    if type(count)~="number" then return names end
+    for i=1,math.min(count,1000) do
+        -- The online flag is the ninth result, beyond C.Call's return limit.
+        local ok,name,rank,rankIndex,level,class,zone,note,officerNote,online=pcall(GetGuildRosterInfo,i)
+        if ok and C.Safe(name) and C.Safe(online) then
+            local key=self:PlayerKey(name)
+            if key then names[key]={online=online==true} end
+        end
+    end
+    return names
+end
+function A:RequestGuildRoster()
+    if C.Call(IsInGuild)~=true or C.Now()-(self.guildRequestedAt or -1000)<30 then return end
+    local request=C_GuildInfo and C_GuildInfo.GuildRoster or GuildRoster
+    if type(request)~="function" then return end
+    self.guildRequestedAt=C.Now();C.Call(request)
+end
+function A:GuildMembers()
+    local names={}
+    if C.Call(IsInGuild)~=true or type(GetGuildRosterInfo)~="function" then return names end
+    local count=C.Call(GetNumGuildMembers)
+    if type(count)~="number" then return names end
+    for i=1,math.min(count,1000) do
+        -- The online flag is the ninth result, beyond C.Call's return limit.
+        local ok,name,rank,rankIndex,level,class,zone,note,officerNote,online=pcall(GetGuildRosterInfo,i)
+        if ok and C.Safe(name) and C.Safe(online) then
+            local key=self:PlayerKey(name)
+            if key then names[key]={online=online==true} end
+        end
+    end
+    return names
+end
+function A:RequestGuildRoster()
+    if C.Call(IsInGuild)~=true or C.Now()-(self.guildRequestedAt or -1000)<30 then return end
+    local request=C_GuildInfo and C_GuildInfo.GuildRoster or GuildRoster
+    if type(request)~="function" then return end
+    self.guildRequestedAt=C.Now();C.Call(request)
 end
 function A:IsIgnored(name)
     local key=self:PlayerKey(name)
